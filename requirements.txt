@@ -1,1 +1,3 @@
-torch>=2.0
+torch>=2.0           # for pytorch_blocks/
+jax==0.10.0          # for flax_blocks/
+flax==0.10.2         # for flax_blocks/
