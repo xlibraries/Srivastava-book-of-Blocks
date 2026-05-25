@@ -1,20 +1,74 @@
 """Section 6 - GAN blocks (NHWC).
 
-Generator/discriminator templates, StyleGAN building blocks (mapping
-network, style block, modulated conv), AdaIN re-export, minibatch
-standard-deviation, progressive growing helper.
+Generator/discriminator templates, StyleGAN building blocks (equalized-LR
+linear/conv, mapping network, style block, modulated conv), AdaIN
+re-export, minibatch standard-deviation, progressive growing helper.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Optional, Union
 
 import jax
 import jax.numpy as jnp
 from flax import nnx
 
 from .core_blocks import AdaIN  # noqa: F401  re-exported for completeness
+
+
+# ---------------------------------------------------------------------------
+# Equalized-learning-rate primitives  (Karras et al. 2017)
+# ---------------------------------------------------------------------------
+
+class EqualLinear(nnx.Module):
+    """Equalized-LR linear used by Progressive GAN / StyleGAN.
+
+    The kernel is sampled from ``N(0, 1)`` and scaled at runtime by
+    ``gain / sqrt(fan_in)``; ``lr_mul`` further multiplies the effective
+    learning rate (StyleGAN uses ``lr_mul=0.01`` for the mapping network).
+    """
+
+    def __init__(self, in_features: int, out_features: int,
+                 use_bias: bool = True, gain: float = 1.0,
+                 lr_mul: float = 1.0, *, rngs: nnx.Rngs) -> None:
+        self.weight = nnx.Param(
+            jax.random.normal(rngs.params(), (in_features, out_features)) / lr_mul)
+        self.bias = nnx.Param(jnp.zeros((out_features,))) if use_bias else None
+        self.scale = gain / math.sqrt(in_features) * lr_mul
+        self.lr_mul = lr_mul
+
+    def __call__(self, x: jax.Array) -> jax.Array:
+        out = x @ (self.weight.value * self.scale)
+        if self.bias is not None:
+            out = out + self.bias.value * self.lr_mul
+        return out
+
+
+class EqualConv2d(nnx.Module):
+    """Equalized-LR 2-D convolution (NHWC, StyleGAN family)."""
+
+    def __init__(self, in_ch: int, out_ch: int, kernel_size: int = 3,
+                 strides: Union[int, tuple[int, int]] = 1,
+                 padding: str = "SAME", use_bias: bool = True,
+                 gain: float = 1.0, *, rngs: nnx.Rngs) -> None:
+        self.weight = nnx.Param(jax.random.normal(
+            rngs.params(), (kernel_size, kernel_size, in_ch, out_ch)))
+        self.bias = nnx.Param(jnp.zeros((out_ch,))) if use_bias else None
+        self.strides = ((strides, strides)
+                        if isinstance(strides, int) else tuple(strides))
+        self.padding = padding
+        fan_in = in_ch * kernel_size * kernel_size
+        self.scale = gain / math.sqrt(fan_in)
+
+    def __call__(self, x: jax.Array) -> jax.Array:
+        out = jax.lax.conv_general_dilated(
+            x, self.weight.value * self.scale,
+            window_strides=self.strides, padding=self.padding,
+            dimension_numbers=("NHWC", "HWIO", "NHWC"))
+        if self.bias is not None:
+            out = out + self.bias.value
+        return out
 
 
 # ---------------------------------------------------------------------------

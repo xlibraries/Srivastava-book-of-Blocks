@@ -113,6 +113,10 @@ def main() -> None:
           _shape(gb.ModulatedConv2d(64, 32, 3, 256, rngs=rngs)(z, w)))
     print(" StyleBlock       ",
           _shape(gb.StyleBlock(64, 32, 256, rngs=rngs)(z, w, key)))
+    print(" EqualLinear      ",
+          _shape(gb.EqualLinear(64, 128, rngs=rngs)(jnp.ones((2, 64)))))
+    print(" EqualConv2d      ",
+          _shape(gb.EqualConv2d(64, 32, 3, rngs=rngs)(z)))
 
     print("== vit ==")
     img = jnp.ones((2, 64, 64, 3))

@@ -1,18 +1,66 @@
 """Section 6 - GAN blocks.
 
-Generator/discriminator templates, StyleGAN building blocks (style block,
-AdaIN, modulated conv), minibatch standard-deviation, and a helper for
-progressive growing.
+Generator/discriminator templates, StyleGAN building blocks (equalized-LR
+linear/conv, mapping network, style block, modulated conv), minibatch
+standard-deviation, and a helper for progressive growing.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+# ---------------------------------------------------------------------------
+# Equalized-learning-rate primitives  (Karras et al. 2017)
+# ---------------------------------------------------------------------------
+
+class EqualLinear(nn.Module):
+    """Equalized-LR linear used by Progressive GAN / StyleGAN.
+
+    The kernel is sampled from ``N(0, 1)`` and scaled at runtime by
+    ``gain / sqrt(fan_in)``; ``lr_mul`` further multiplies the effective
+    learning rate (StyleGAN uses ``lr_mul=0.01`` for the mapping network).
+    """
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True,
+                 gain: float = 1.0, lr_mul: float = 1.0) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(
+            torch.randn(out_features, in_features) / lr_mul)
+        self.bias = nn.Parameter(torch.zeros(out_features)) if bias else None
+        self.scale = gain / math.sqrt(in_features) * lr_mul
+        self.lr_mul = lr_mul
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        bias = self.bias * self.lr_mul if self.bias is not None else None
+        return F.linear(x, self.weight * self.scale, bias)
+
+
+class EqualConv2d(nn.Module):
+    """Equalized-LR 2-D convolution (StyleGAN family)."""
+
+    def __init__(self, in_ch: int, out_ch: int, kernel_size: int = 3,
+                 stride: int = 1, padding: Optional[int] = None,
+                 bias: bool = True, gain: float = 1.0) -> None:
+        super().__init__()
+        if padding is None:
+            padding = kernel_size // 2
+        self.weight = nn.Parameter(
+            torch.randn(out_ch, in_ch, kernel_size, kernel_size))
+        self.bias = nn.Parameter(torch.zeros(out_ch)) if bias else None
+        self.stride = stride
+        self.padding = padding
+        fan_in = in_ch * kernel_size * kernel_size
+        self.scale = gain / math.sqrt(fan_in)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.conv2d(x, self.weight * self.scale, self.bias,
+                        stride=self.stride, padding=self.padding)
 
 
 # ---------------------------------------------------------------------------

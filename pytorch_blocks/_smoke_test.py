@@ -92,6 +92,8 @@ def main() -> None:
     w = torch.randn(2, 256)
     print(" ModulatedConv2d  ", _shape(gb.ModulatedConv2d(64, 32, 3, 256)(z, w)))
     print(" StyleBlock       ", _shape(gb.StyleBlock(64, 32, 256)(z, w)))
+    print(" EqualLinear      ", _shape(gb.EqualLinear(64, 128)(torch.randn(2, 64))))
+    print(" EqualConv2d      ", _shape(gb.EqualConv2d(64, 32, 3)(z)))
 
     print("== vit ==")
     img = torch.randn(2, 3, 64, 64)
