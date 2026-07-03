@@ -14,7 +14,7 @@ This checkout also keeps `pytorch_blocks/` and `flax_blocks/` at the repo root (
 ## Clone
 
 ```bash
-git clone --recurse-submodules https://github.com/RealityShifts/Srivastava-book-of-Blocks.git
+git clone --recurse-submodules https://github.com/xlibraries/Srivastava-book-of-Blocks.git
 cd Srivastava-book-of-Blocks
 ```
 
